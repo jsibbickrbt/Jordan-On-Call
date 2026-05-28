@@ -1,0 +1,9 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Jordan On Call//EN
+CALNAME:Jordan On Call
+X-WR-CALNAME:Jordan On Call
+X-WR-CALDESC:Jordan on-call schedule filtered from RBT Work Calendar
+CALSCALE:GREGORIAN
+METHOD:PUBLISH
+END:VCALENDAR
