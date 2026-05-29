@@ -43,11 +43,15 @@ def get_dtstart(event_text):
 
 def is_jordan_oncall(event_text):
     summary = get_summary(event_text).lower()
-    # Must contain "jordan" and "on call" (or "oncall")
-    # Must NOT be a vacation or other event
     has_jordan = "jordan" in summary
     has_oncall = "on call" in summary or "oncall" in summary
     return has_jordan and has_oncall
+
+def is_jordan_vacation(event_text):
+    summary = get_summary(event_text).lower()
+    has_jordan = "jordan" in summary
+    has_vacation = "vacation" in summary
+    return has_jordan and has_vacation
 
 def expand_rrule(event_text, rrule_until_cutoff=None):
     """
@@ -148,41 +152,36 @@ def make_single_event(event_text, date_str, uid_suffix=""):
     lines.append("END:VEVENT")
     return "\n".join(lines)
 
+def process_event(event_text, output_events):
+    """Expand and append a single event (handles RRULE or one-off)."""
+    has_rrule = any(line.startswith("RRULE:") for line in event_text.splitlines())
+    if has_rrule:
+        dates = expand_rrule(event_text)
+        for i, d in enumerate(dates):
+            output_events.append(make_single_event(event_text, d, uid_suffix=f"-{i}"))
+    else:
+        dtstart = ""
+        for line in event_text.splitlines():
+            if line.startswith("DTSTART"):
+                dtstart = line.split(":")[-1].strip()[:8]
+                break
+        if dtstart:
+            output_events.append(make_single_event(event_text, dtstart))
+
 def build_jordan_ics(events):
     output_events = []
 
     for event_text in events:
-        if not is_jordan_oncall(event_text):
-            continue
-
-        # Check if it has RRULE
-        has_rrule = any(line.startswith("RRULE:") for line in event_text.splitlines())
-        
-        if has_rrule:
-            dates = expand_rrule(event_text)
-            for i, d in enumerate(dates):
-                single = make_single_event(event_text, d, uid_suffix=f"-{i}")
-                output_events.append(single)
-        else:
-            # Single event — just clean it up
-            dtstart = ""
-            for line in event_text.splitlines():
-                if line.startswith("DTSTART"):
-                    dtstart = line.split(":")[-1].strip()[:8]
-                    break
-            if dtstart:
-                single = make_single_event(event_text, dtstart)
-                output_events.append(single)
-
-    now = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+        if is_jordan_oncall(event_text) or is_jordan_vacation(event_text):
+            process_event(event_text, output_events)
 
     ics_lines = [
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
         "PRODID:-//Jordan On Call//EN",
-        "CALNAME:Jordan On Call",
-        "X-WR-CALNAME:Jordan On Call",
-        "X-WR-CALDESC:Jordan on-call schedule filtered from RBT Work Calendar",
+        "CALNAME:Jordan Schedule",
+        "X-WR-CALNAME:Jordan Schedule",
+        "X-WR-CALDESC:Jordan on-call and vacation schedule from RBT Work Calendar",
         "CALSCALE:GREGORIAN",
         "METHOD:PUBLISH",
     ]
@@ -205,9 +204,10 @@ def main():
     events = parse_events(raw)
     print(f"  Found {len(events)} total events")
 
-    print("Filtering Jordan on-call events...")
-    jordan_events = [e for e in events if is_jordan_oncall(e)]
-    print(f"  Found {len(jordan_events)} Jordan on-call events (before expansion)")
+    oncall_events = [e for e in events if is_jordan_oncall(e)]
+    vacation_events = [e for e in events if is_jordan_vacation(e)]
+    print(f"  Found {len(oncall_events)} Jordan on-call events (before expansion)")
+    print(f"  Found {len(vacation_events)} Jordan vacation events")
 
     print("Building ICS...")
     ics_content = build_jordan_ics(events)
