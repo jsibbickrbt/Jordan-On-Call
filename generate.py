@@ -152,8 +152,25 @@ def make_single_event(event_text, date_str, uid_suffix=""):
     lines.append("END:VEVENT")
     return "\n".join(lines)
 
-def process_event(event_text, output_events):
+def make_multiday_event(event_text):
+    """Preserve a multi-day event as-is (for vacations), just clean up formatting."""
+    lines = ["BEGIN:VEVENT"]
+    for line in event_text.splitlines():
+        if line in ("BEGIN:VEVENT", "END:VEVENT"):
+            continue
+        key = line.split(":")[0].split(";")[0]
+        if key in ("RRULE", "EXDATE"):
+            continue
+        lines.append(line)
+    lines.append("END:VEVENT")
+    return "\n".join(lines)
+
+def process_event(event_text, output_events, is_vacation=False):
     """Expand and append a single event (handles RRULE or one-off)."""
+    if is_vacation:
+        # Preserve original start/end dates for multi-day vacation blocks
+        output_events.append(make_multiday_event(event_text))
+        return
     has_rrule = any(line.startswith("RRULE:") for line in event_text.splitlines())
     if has_rrule:
         dates = expand_rrule(event_text)
@@ -172,8 +189,10 @@ def build_jordan_ics(events):
     output_events = []
 
     for event_text in events:
-        if is_jordan_oncall(event_text) or is_jordan_vacation(event_text):
-            process_event(event_text, output_events)
+        if is_jordan_oncall(event_text):
+            process_event(event_text, output_events, is_vacation=False)
+        elif is_jordan_vacation(event_text):
+            process_event(event_text, output_events, is_vacation=True)
 
     ics_lines = [
         "BEGIN:VCALENDAR",
