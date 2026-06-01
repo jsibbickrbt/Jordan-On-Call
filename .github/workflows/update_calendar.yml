@@ -53,44 +53,34 @@ jobs:
 
       - name: Send on-call text reminder
         env:
-          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
-          TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
-          TWILIO_FROM: ${{ secrets.TWILIO_FROM }}
-          TWILIO_TO: ${{ secrets.TWILIO_TO }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_PASSWORD: ${{ secrets.GMAIL_PASSWORD }}
+          NOTIFY_EMAIL: ${{ secrets.NOTIFY_EMAIL }}
         run: |
           python - <<'EOF'
-          import urllib.request, urllib.parse, os
+          import smtplib, os
           from datetime import date
+          from email.mime.text import MIMEText
 
           today = date.today().strftime("%Y%m%d")
 
           with open("docs/jordan_oncall.ics") as f:
               content = f.read()
 
-          # Check if today appears as an on-call date
           if f"DTSTART;VALUE=DATE:{today}" in content:
-              sid   = os.environ["TWILIO_ACCOUNT_SID"]
-              token = os.environ["TWILIO_AUTH_TOKEN"]
-              frm   = os.environ["TWILIO_FROM"]
-              to    = os.environ["TWILIO_TO"]
+              gmail_user = os.environ["GMAIL_USER"]
+              gmail_pass = os.environ["GMAIL_PASSWORD"]
+              to_email   = os.environ["NOTIFY_EMAIL"]
 
-              data = urllib.parse.urlencode({
-                  "From": frm,
-                  "To": to,
-                  "Body": "Reminder: You are on call today!"
-              }).encode()
+              msg = MIMEText("Reminder: You are on call today!")
+              msg["Subject"] = "Reminder: You are on call today!"
+              msg["From"]    = gmail_user
+              msg["To"]      = to_email
 
-              req = urllib.request.Request(
-                  f"https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json",
-                  data=data,
-                  headers={"Content-Type": "application/x-www-form-urlencoded"}
-              )
-              import base64
-              creds = base64.b64encode(f"{sid}:{token}".encode()).decode()
-              req.add_header("Authorization", f"Basic {creds}")
-
-              resp = urllib.request.urlopen(req)
-              print("Text sent:", resp.status)
+              with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+                  smtp.login(gmail_user, gmail_pass)
+                  smtp.sendmail(gmail_user, to_email, msg.as_string())
+              print("Text sent via email gateway")
           else:
               print("Not on call today, no text sent.")
           EOF
